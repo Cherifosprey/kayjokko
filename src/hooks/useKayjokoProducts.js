@@ -12,10 +12,11 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
       
       let allData = [];
       let from = 0;
-      const step = 1000;
+      const step = 500; // Réduit à 500 pour éviter la coupure de l'API Supabase
       let hasMore = true;
 
-      // Boucle pour récupérer tous les produits par blocs de 1000
+      console.log("⏳ Début de la récupération des produits...");
+
       while (hasMore) {
         let query = supabase
           .from('kayjoko_products')
@@ -25,8 +26,10 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
             subcategory:kayjoko_subcategories(name, id),
             product_images:kayjoko_product_images(id, image_url, is_primary, display_order)
           `)
+          // IMPORTANT: Ajout de l'ID pour forcer une pagination stable
           .order('created_at', { ascending: false })
-          .range(from, from + step - 1); // Pagination dynamique
+          .order('id', { ascending: true }) 
+          .range(from, from + step - 1);
 
         if (onlyActive) {
           query = query.eq('is_active', true);
@@ -43,10 +46,11 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
 
         if (fetchError) throw fetchError;
 
-        // Ajouter les données du bloc actuel au tableau global
+        console.log(`📦 Bloc récupéré : ${data.length} produits (de ${from} à ${from + step - 1})`);
+
         allData = [...allData, ...data];
 
-        // S'il y a moins de 1000 produits retournés, c'est la fin du catalogue
+        // S'il y a moins de 500 produits retournés, c'est la fin
         if (data.length < step) {
           hasMore = false;
         } else {
@@ -54,13 +58,13 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
         }
       }
 
+      console.log(`✅ Récupération terminée. Total aspiré depuis Supabase : ${allData.length} produits`);
+
       const formattedData = allData.map(item => {
-        // Trier les images par display_order
         const sortedImages = item.product_images 
           ? item.product_images.sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
           : [];
         
-        // Trouver l'image principale
         const primaryImage = sortedImages.find(img => img.is_primary) || sortedImages[0];
         
         return {
@@ -76,10 +80,9 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
         };
       });
 
-      // Mettre à jour l'état avec la totalité des produits (> 1000)
       setProducts(formattedData);
     } catch (err) {
-      console.error('Error fetching products:', err);
+      console.error('❌ Erreur lors de la récupération :', err);
       setError(err.message);
     } finally {
       setLoading(false);
