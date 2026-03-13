@@ -12,10 +12,8 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
       
       let allData = [];
       let from = 0;
-      const step = 500; // Réduit à 500 pour éviter la coupure de l'API Supabase
+      const step = 500;
       let hasMore = true;
-
-      console.log("⏳ Début de la récupération des produits...");
 
       while (hasMore) {
         let query = supabase
@@ -26,7 +24,6 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
             subcategory:kayjoko_subcategories(name, id),
             product_images:kayjoko_product_images(id, image_url, is_primary, display_order)
           `)
-          // IMPORTANT: Ajout de l'ID pour forcer une pagination stable
           .order('created_at', { ascending: false })
           .order('id', { ascending: true }) 
           .range(from, from + step - 1);
@@ -46,19 +43,14 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
 
         if (fetchError) throw fetchError;
 
-        console.log(`📦 Bloc récupéré : ${data.length} produits (de ${from} à ${from + step - 1})`);
-
         allData = [...allData, ...data];
 
-        // S'il y a moins de 500 produits retournés, c'est la fin
         if (data.length < step) {
           hasMore = false;
         } else {
           from += step;
         }
       }
-
-      console.log(`✅ Récupération terminée. Total aspiré depuis Supabase : ${allData.length} produits`);
 
       const formattedData = allData.map(item => {
         const sortedImages = item.product_images 
@@ -82,7 +74,7 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
 
       setProducts(formattedData);
     } catch (err) {
-      console.error('❌ Erreur lors de la récupération :', err);
+      console.error('Error fetching products:', err);
       setError(err.message);
     } finally {
       setLoading(false);
