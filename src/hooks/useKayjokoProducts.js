@@ -15,7 +15,7 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
       const step = 1000;
       let hasMore = true;
 
-      // Boucle pour récupérer au-delà de la limite des 1000 produits de Supabase
+      // Boucle pour récupérer tous les produits par blocs de 1000
       while (hasMore) {
         let query = supabase
           .from('kayjoko_products')
@@ -26,13 +26,12 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
             product_images:kayjoko_product_images(id, image_url, is_primary, display_order)
           `)
           .order('created_at', { ascending: false })
-          .range(from, from + step - 1); // Pagination : de 'from' à 'from + 999'
+          .range(from, from + step - 1); // Pagination dynamique
 
         if (onlyActive) {
           query = query.eq('is_active', true);
         }
 
-        // Apply server-side filters if provided
         if (filters.category_id) {
           query = query.eq('category_id', filters.category_id);
         }
@@ -40,30 +39,28 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
           query = query.eq('subcategory_id', filters.subcategory_id);
         }
 
-        const { data, error } = await query;
+        const { data, fetchError } = await query;
 
-        if (error) throw error;
+        if (fetchError) throw fetchError;
 
-        // Ajouter les données récupérées à notre tableau global
+        // Ajouter les données du bloc actuel au tableau global
         allData = [...allData, ...data];
 
-        // S'il y a moins de 1000 éléments retournés, c'est qu'on a atteint la fin
+        // S'il y a moins de 1000 produits retournés, c'est la fin du catalogue
         if (data.length < step) {
           hasMore = false;
         } else {
-          // Sinon, on prépare l'index pour la requête suivante (ex: 1000, puis 2000...)
           from += step;
         }
       }
 
-      // On formate la totalité des données récupérées
       const formattedData = allData.map(item => {
-        // Sort images by display_order
+        // Trier les images par display_order
         const sortedImages = item.product_images 
           ? item.product_images.sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
           : [];
         
-        // Find primary image
+        // Trouver l'image principale
         const primaryImage = sortedImages.find(img => img.is_primary) || sortedImages[0];
         
         return {
@@ -79,6 +76,7 @@ export const useKayjokoProducts = (onlyActive = true, filters = {}) => {
         };
       });
 
+      // Mettre à jour l'état avec la totalité des produits (> 1000)
       setProducts(formattedData);
     } catch (err) {
       console.error('Error fetching products:', err);
