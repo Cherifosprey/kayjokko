@@ -1,27 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ShoppingCart, Heart, User, Menu, X, ChevronDown } from 'lucide-react';
+import { Search, ShoppingCart, Heart, User, Menu, X, ChevronDown, Folder } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
-import { categories as initialCategories, subscribeToCategories } from '@/data/categoriesData';
+import { useCategories } from '@/hooks/useCategories'; // 🟢 NOUVEL IMPORT
 
 function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [localCategories, setLocalCategories] = useState(initialCategories);
   
   const { getCartCount } = useCart();
   const navigate = useNavigate();
   const cartCount = getCartCount();
   const logoUrl = "https://horizons-cdn.hostinger.com/3ce8dc60-b7b9-4247-9062-c4256906ec88/cd9315c19120632cfaec726c40b67aec.jpg";
 
-  useEffect(() => {
-    const unsubscribe = subscribeToCategories((newCategories) => {
-      setLocalCategories(newCategories);
-    });
-    return () => unsubscribe();
-  }, []);
+  // 🟢 NOUVEAU : Récupération dynamique depuis Supabase
+  const { categories = [] } = useCategories();
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -32,13 +27,13 @@ function Header() {
   };
 
   const chunkCategories = () => {
-    if (!localCategories.length) return [];
-    const colSize = Math.ceil(localCategories.length / 4) || 1;
+    if (!categories.length) return [];
+    const colSize = Math.ceil(categories.length / 4) || 1;
     return [
-      localCategories.slice(0, colSize),
-      localCategories.slice(colSize, colSize * 2),
-      localCategories.slice(colSize * 2, colSize * 3),
-      localCategories.slice(colSize * 3)
+      categories.slice(0, colSize),
+      categories.slice(colSize, colSize * 2),
+      categories.slice(colSize * 2, colSize * 3),
+      categories.slice(colSize * 3)
     ];
   };
 
@@ -91,7 +86,8 @@ function Header() {
                       {columns.map((column, colIndex) => (
                         <div key={colIndex} className="flex flex-col gap-6">
                           {column.map((cat) => {
-                            const Icon = cat.icon;
+                            // 🟢 NOUVEAU : Sécurisation de l'icône
+                            const Icon = (typeof cat.icon === 'function' || typeof cat.icon === 'object') ? cat.icon : Folder;
                             return (
                               <div key={cat.id} className="group/item">
                                 <Link 
@@ -105,7 +101,7 @@ function Header() {
                                   >
                                     <Icon 
                                       size={24} 
-                                      color={cat.color} 
+                                      color={cat.color || "#003D7A"} 
                                       strokeWidth={2}
                                     />
                                   </motion.div>
@@ -116,17 +112,23 @@ function Header() {
                                 
                                 {cat.subcategories && cat.subcategories.length > 0 && (
                                   <ul className="space-y-1 pl-[44px]">
-                                    {cat.subcategories.slice(0, 4).map((sub) => (
-                                      <li key={sub.id}>
+                                    {cat.subcategories.slice(0, 4).map((sub, index) => {
+                                      // 🟢 NOUVEAU : Adaptation format texte ou objet
+                                      const subName = typeof sub === 'string' ? sub : sub.name;
+                                      const subId = typeof sub === 'string' ? index : sub.id;
+                                      
+                                      return (
+                                      <li key={subId}>
                                         <Link 
-                                          to={`/category/${encodeURIComponent(cat.name)}/${encodeURIComponent(sub.name)}`}
+                                          to={`/category/${encodeURIComponent(cat.name)}/${encodeURIComponent(subName)}`}
                                           className="text-[11px] text-[#666] hover:text-[#FFA500] hover:underline transition-all duration-150 block py-0.5"
                                           onClick={() => setIsMegaMenuOpen(false)}
                                         >
-                                          {sub.name}
+                                          {subName}
                                         </Link>
                                       </li>
-                                    ))}
+                                      )
+                                    })}
                                     {cat.subcategories.length > 4 && (
                                       <li>
                                         <Link 
@@ -235,8 +237,8 @@ function Header() {
                        Catégories
                      </p>
                      <div className="flex flex-col gap-4">
-                       {localCategories.map((cat) => {
-                         const Icon = cat.icon;
+                       {categories.map((cat) => {
+                         const Icon = (typeof cat.icon === 'function' || typeof cat.icon === 'object') ? cat.icon : Folder;
                          return (
                            <div key={cat.id} className="group/mobile-item">
                               <Link 
@@ -244,21 +246,25 @@ function Header() {
                                 onClick={() => setIsMobileMenuOpen(false)} 
                                 className="flex items-center gap-3 text-gray-800 font-semibold py-1 hover:text-[#003D7A] transition-colors"
                               >
-                                <Icon size={20} color={cat.color} />
+                                <Icon size={20} color={cat.color || "#003D7A"} />
                                 <span className="text-sm">{cat.name}</span>
                               </Link>
                               {cat.subcategories && cat.subcategories.length > 0 && (
                                 <div className="pl-8 flex flex-wrap gap-2 mt-2">
-                                  {cat.subcategories.map(sub => (
+                                  {cat.subcategories.map((sub, index) => {
+                                    const subName = typeof sub === 'string' ? sub : sub.name;
+                                    const subId = typeof sub === 'string' ? index : sub.id;
+                                    return (
                                     <Link 
-                                      key={sub.id} 
-                                      to={`/category/${encodeURIComponent(cat.name)}/${encodeURIComponent(sub.name)}`}
+                                      key={subId} 
+                                      to={`/category/${encodeURIComponent(cat.name)}/${encodeURIComponent(subName)}`}
                                       onClick={() => setIsMobileMenuOpen(false)}
                                       className="text-[11px] text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-100 hover:bg-[#003D7A] hover:text-white hover:border-[#003D7A] transition-colors"
                                     >
-                                      {sub.name}
+                                      {subName}
                                     </Link>
-                                  ))}
+                                    )
+                                  })}
                                 </div>
                               )}
                            </div>

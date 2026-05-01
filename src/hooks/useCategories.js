@@ -1,117 +1,66 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/customSupabaseClient.js';
-import { categories as fallbackCategories } from '@/data/categoriesData';
-
-// Simple global cache to avoid excessive API calls
-let cachedCategories = null;
 
 export const useCategories = () => {
-  const [categories, setCategories] = useState(cachedCategories || []);
-  const [loading, setLoading] = useState(!cachedCategories);
-  const [error, setError] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchCategories = async () => {
+    try {
+      setLoading(true);
+      // 1. Récupérer les catégories
+      const { data: catData, error: catError } = await supabase
+        .from('kayjoko_categories')
+        .select('*')
+        .order('name');
+
+      if (catError) throw catError;
+
+      // 2. Récupérer les sous-catégories
+      const { data: subData, error: subError } = await supabase
+        .from('kayjoko_subcategories')
+        .select('*')
+        .order('name');
+
+      if (subError) throw subError;
+
+      // 3. Formater les données pour qu'elles correspondent à la structure attendue par ton site
+      const formattedCategories = (catData || []).map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        icon: 'Folder', // Icône par défaut si tu utilises Lucide React
+        subcategories: (subData || [])
+          .filter(sub => sub.category_id === cat.id)
+          .map(sub => sub.name)
+      }));
+
+      setCategories(formattedCategories);
+    } catch (error) {
+      console.error('Erreur lors du chargement des catégories:', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // If we already have cached data, don't re-fetch immediately on every mount
-    if (cachedCategories && cachedCategories.length > 0) {
-      setCategories(cachedCategories);
-      setLoading(false);
-      return;
-    }
+    fetchCategories();
 
-    const fetchCategoriesData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+    // Écouter les changements en temps réel (si tu ajoutes une catégorie depuis l'admin)
+    const catSubscription = supabase
+      .channel('public:kayjoko_categories')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kayjoko_categories' }, fetchCategories)
+      .subscribe();
 
-        // 1. Fetch unique categories from products
-        // Note: Supabase JS doesn't have a native .distinct() method for select,
-        // so we fetch the relevant fields and deduplicate in JavaScript,
-        // or we rely on the kayjoko_categories table which is the source of truth.
-        // For robustness and linking to subcategories via ID, we fetch from kayjoko_categories,
-        // but we ensure we get ALL of them as requested.
-        const { data: dbCats, error: catError } = await supabase
-          .from('kayjoko_categories')
-          .select('*')
-          .order('name');
-        
-        if (catError) throw catError;
-
-        // 2. Fetch all subcategories
-        const { data: dbSubcats, error: subError } = await supabase
-          .from('kayjoko_subcategories')
-          .select('*')
-          .order('name');
-
-        if (subError) throw subError;
-
-        // 3. Map subcategories to their parent categories
-        const structuredCategories = dbCats.map(cat => ({
-          ...cat,
-          subcategories: dbSubcats.filter(sub => sub.category_id === cat.id)
-        }));
-
-        // Cache the result
-        cachedCategories = structuredCategories;
-        setCategories(structuredCategories);
-
-      } catch (err) {
-        console.error('Error fetching categories from Supabase, using fallback:', err);
-        setError(err.message);
-        
-        // Fallback to hardcoded categories if fetch fails
-        const formattedFallback = fallbackCategories.map(cat => ({
-          id: cat.id,
-          name: cat.name,
-          subcategories: (cat.subcategories || []).map(subName => ({
-            id: `${cat.id}-${subName}`,
-            name: subName,
-            category_id: cat.id
-          }))
-        }));
-        
-        setCategories(formattedFallback);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCategoriesData();
-
-    // Optional: Set up real-time subscription to update menu when categories change
-    const categoriesSubscription = supabase
-      .channel('categories-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'kayjoko_categories' }, () => {
-        // Invalidate cache and refetch if there's a change
-        cachedCategories = null;
-        fetchCategoriesData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'kayjoko_subcategories' }, () => {
-        cachedCategories = null;
-        fetchCategoriesData();
-      })
+    const subcatSubscription = supabase
+      .channel('public:kayjoko_subcategories')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kayjoko_subcategories' }, fetchCategories)
       .subscribe();
 
     return () => {
-      supabase.removeChannel(categoriesSubscription);
+      supabase.removeChannel(catSubscription);
+      supabase.removeChannel(subcatSubscription);
     };
   }, []);
 
-  const getSubcategoriesByCategory = (categoryId) => {
-    if (!categoryId) return [];
-    const category = categories.find(c => c.id === categoryId);
-    return category ? category.subcategories : [];
-  };
-
-  const getCategoryName = (categoryId) => {
-    const category = categories.find(c => c.id === categoryId);
-    return category ? category.name : '';
-  };
-
-  return { 
-    categories, 
-    loading, 
-    error, 
-    getSubcategoriesByCategory,
-    getCategoryName
-  };
+  return { categories, loading, refetch: fetchCategories };
 };
